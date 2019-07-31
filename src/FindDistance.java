@@ -110,7 +110,7 @@ public class FindDistance {
 
         try (Writer writer = new BufferedWriter(new OutputStreamWriter(new FileOutputStream(fileName), "utf-8"))) {
             for(int i = 0; i < distances.size(); i++){
-                writer.write(i + ": " + distances.get(i) + "\n");
+                writer.write(i + "\t" + distances.get(i) + "\n");
             }
         }
         System.out.println("Task Completed Successfully!");
