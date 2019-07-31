@@ -4,8 +4,8 @@ import java.util.Hashtable;
 
 /*
 * This code takes an input as a graph that contains as the first line, the number of nodes and the number of edges.
-* Every subsequent line of the graph contains the fromVertex and the toVertex spearataed by some whitespace.
-* The output of the code is a graph with all the nodes mapped from 0 to n-1 called remapped_YourGraphName.txt in the same format described above.
+* Every subsequent line of the graph contains the fromVertex and the toVertex separated by some whitespace.
+* The output of the code is a graph with all the nodes mapped from 0 to n-1 called remapped_<YourGraphName>.txt in the same format described above.
 * It also removes all self-loops and multiple edges between the nodes.
 * */
 
