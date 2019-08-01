@@ -1,5 +1,7 @@
 import java.io.*;
 import java.util.ArrayList;
+import java.util.LinkedList;
+import java.util.Queue;
 
 /*
 * Given a source node s, the idea is to find all the nodes that are reachable from s, and at the same time, also calculate
@@ -114,5 +116,46 @@ public class FindDistance {
             }
         }
         System.out.println("Task Completed Successfully!");
+    }
+
+    /*
+    * This method prints out the nodes that are reachable from the given sourceNode vertex
+    * */
+    public void findReachableNodesFromSource (int sourceNode) throws Exception{
+
+        //Initializations
+        System.out.println("Calculating Reachable Nodes from Source");
+        ArrayList<Integer> reachableNodes = new ArrayList<>();
+        ArrayList<Boolean> visited = new ArrayList<>();
+        for(int i = 0; i < n; i++){
+            visited.add(false);
+        }
+        Queue<Integer> bfsQueue = new LinkedList<>();
+
+        //Starting BFS over the input graph.
+        visited.set(sourceNode, true);
+        bfsQueue.add(sourceNode);
+        reachableNodes.add(sourceNode);
+
+        int u = 0;
+        int v = 0;
+        while(!bfsQueue.isEmpty()){
+            u = bfsQueue.poll();
+            for(int j = 0; j < myGraph.get(u).size(); j++){
+                v = myGraph.get(u).get(j);
+                if (!visited.get(v)){
+                    visited.set(v, true);
+                    bfsQueue.add(v);
+                    reachableNodes.add(v);
+                }
+            }
+        }
+
+        //Printing out the info
+        System.out.println("Number of reachable Nodes from: " + sourceNode + " = " + reachableNodes.size());
+        for(int i = 0; i < reachableNodes.size(); i++){
+            System.out.println(reachableNodes.get(i));
+        }
+        System.out.println("Completed Finding Reachable Nodes Successfully");
     }
 }
