@@ -62,7 +62,7 @@ public class SanitizeGraph {
         printGraphToFile(path);
     }
 
-    public void validateGraphIsCorrect(String path, int vertexCount) throws Exception  {
+    private void validateGraphIsCorrect(String path, int vertexCount) throws Exception  {
 
         System.out.println("Validating if remapped graph is correct");
         File file = new File(path);
@@ -91,7 +91,7 @@ public class SanitizeGraph {
         }
     }
 
-    public void printGraphToFile(String path) throws Exception{
+    private void printGraphToFile(String path) throws Exception{
         System.out.println("Printing graph to File");
         String[] completePath = path.trim().split("\\\\");
         String fileName = completePath[completePath.length - 1];
