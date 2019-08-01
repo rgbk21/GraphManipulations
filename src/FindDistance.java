@@ -191,7 +191,7 @@ public class FindDistance {
     /*
     * This method prints out the nodes that are reachable from the given sourceNode vertex
     * */
-    public void findReachableNodesFromSource (int sourceNode, ArrayList<Boolean> visited) throws Exception{
+    private void findReachableNodesFromSource (int sourceNode, ArrayList<Boolean> visited) throws Exception{
 
         //Initializations
         System.out.println("Calculating Reachable Nodes from Source");
