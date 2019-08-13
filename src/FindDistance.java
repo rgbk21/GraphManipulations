@@ -1,5 +1,6 @@
 import java.io.*;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.LinkedList;
 import java.util.Queue;
 
@@ -8,8 +9,11 @@ public class FindDistance {
     private int n = 0;                                                  //Number of nodes
     private int m = 0;                                                  //Number of edges
     private ArrayList<ArrayList<Integer>> myGraph;                      //contains the graph
+    private ArrayList<ArrayList<Integer>> myTransposedGraph;            //contains the transposedGraph
     private ArrayList<Integer> distances = new ArrayList<>();           //This will store the distance of each node from the source
-    private String pathToFile = "";
+    private String pathToGraphFile = "";
+    private String pathToHBNFile = "";
+    private String pathToAllActNodesFile = "";
 
     /*
      * Given a source node s, the idea is to find all the nodes that are reachable from s, and at the same time, also calculate
@@ -20,11 +24,13 @@ public class FindDistance {
      * 3: 0  //means that vertex 3 was the source
      * 4: -1 //means that vertex 4 was not reachable from the source
      * */
-    public FindDistance(String path) throws Exception{
+    public FindDistance(String pathToGraph, String pathToHBN, String pathToAllActNodes) throws Exception{
 
         System.out.println("Reading Graph from file");
-        pathToFile = path;
-        File file = new File(path);
+        pathToGraphFile = pathToGraph;
+        pathToHBNFile = pathToHBN;
+        pathToAllActNodesFile = pathToAllActNodes;
+        File file = new File(pathToGraph);
         BufferedReader br = new BufferedReader(new FileReader(file));
         String st;
         st = br.readLine();
@@ -50,6 +56,19 @@ public class FindDistance {
         for(int i = 0; i < n; i++){
             distances.add(-1);
         }
+
+        //Creating the transpose of the input graph
+        myTransposedGraph = new ArrayList<>();
+        for(int i = 0; i < n; i++){
+            myTransposedGraph.add(new ArrayList<>());
+        }
+        for(int fromVertex = 0; fromVertex < myGraph.size(); fromVertex++){
+            for(int j = 0; j < myGraph.get(fromVertex).size(); j++){
+                int toVertex = myGraph.get(fromVertex).get(j);
+                myTransposedGraph.get(toVertex).add(fromVertex);
+            }
+        }
+        assertTransposeIsCorrect();
     }
 
     /*
@@ -86,12 +105,22 @@ public class FindDistance {
     public void calculateDistanceFromSource(ArrayList<Integer> sourceNodeList) throws Exception{
 
         //Initializations
-        ArrayList<Integer> srcNodeClosestToThisNode = new ArrayList<>();
+        ArrayList<ArrayList<Integer>> srcNodeClosestToThisNode = new ArrayList<>();
         ArrayList<ArrayList<Integer>> srcNodesThatRchdThisNode = new ArrayList<>();
+        HashSet<Integer> highBeliefNodes = new HashSet<>();                                                             //Stores the top 100 high belief Nodes
+        ArrayList<Integer> incomingHBNCount = new ArrayList<>();                                                        //For every node - this stores the number of highBeliefNodes that have an incoming edge to this node
+        ArrayList<Integer> outgoingHBNCount = new ArrayList<>();                                                        //For every node - this stores the number of outgoing edges to highBeliefNodes
+        HashSet<Integer> allActivatedNodes = new HashSet<>();                                                           //Stores the list of all activated nodes in the graph
+        ArrayList<Integer> incomingAllActNodes = new ArrayList<>();                                                     //For every node - this stores the number of activated Nodes that have an incoming edge to this node
+        ArrayList<Integer> outgoingAllActNodes = new ArrayList<>();                                                     //For every node - this stores the number of outgoing edges to activated nodes
+
+        //Initializations
         for(int i = 0; i < n; i++){
-            srcNodeClosestToThisNode.add(-1);
-        }
-        for(int i = 0; i < n; i++){
+            srcNodeClosestToThisNode.add(new ArrayList<>());
+            incomingHBNCount.add(0);
+            outgoingHBNCount.add(0);
+            incomingAllActNodes.add(0);
+            outgoingAllActNodes.add(0);
             srcNodesThatRchdThisNode.add(new ArrayList<>());
         }
 
@@ -102,10 +131,76 @@ public class FindDistance {
         }
 
         System.out.println("Minimum Distances Calculated");
-        printResultsToFile(sourceNodeList, srcNodeClosestToThisNode, srcNodesThatRchdThisNode);
+
+        readingHbnFromFile(highBeliefNodes);
+        readingAllActNodesFromFile(allActivatedNodes);
+        System.out.println("Populating DataStructures");
+        //Populating the incomingHBNCount and incomingAllActNodes datastructure
+        for(int fromVertex = 0; fromVertex < myTransposedGraph.size(); fromVertex++){
+            for(int j = 0; j < myTransposedGraph.get(fromVertex).size(); j++){
+                int toVertex = myTransposedGraph.get(fromVertex).get(j);
+                if(highBeliefNodes.contains(toVertex)){
+                    int currValue = incomingHBNCount.get(fromVertex);
+                    incomingHBNCount.set(fromVertex, ++currValue);
+                }
+                if(allActivatedNodes.contains(toVertex)){
+                    int currValue = incomingAllActNodes.get(fromVertex);
+                    incomingAllActNodes.set(fromVertex, ++currValue);
+                }
+            }
+        }
+        //Populating the outgoingHBNCount datastructure
+        for(int fromVertex = 0; fromVertex < myGraph.size(); fromVertex++){
+            for(int j = 0; j < myGraph.get(fromVertex).size(); j++){
+                int toVertex = myGraph.get(fromVertex).get(j);
+                if(highBeliefNodes.contains(toVertex)){
+                    int currValue = outgoingHBNCount.get(fromVertex);
+                    outgoingHBNCount.set(fromVertex, ++currValue);
+                }
+                if(allActivatedNodes.contains(toVertex)){
+                    int currValue = outgoingAllActNodes.get(fromVertex);
+                    outgoingAllActNodes.set(fromVertex, ++currValue);
+                }
+            }
+        }
+
+        printResultsToFile(sourceNodeList, srcNodeClosestToThisNode, srcNodesThatRchdThisNode,
+                incomingHBNCount, outgoingHBNCount, incomingAllActNodes, outgoingAllActNodes);
     }
 
-    private void calculateDistanceFromSource(int sourceNode, ArrayList<Integer> srcNodeClosestToThisNode, ArrayList<ArrayList<Integer>> srcNodesThatRchdThisNode) throws Exception {
+    //This method reads the top 100 HighBeliefNodes from the input file
+    private void readingHbnFromFile(HashSet<Integer> highBeliefNodes) throws Exception{
+
+        System.out.println("Reading High Belief Nodes From File");
+        File file = new File(pathToHBNFile);
+        BufferedReader br = new BufferedReader(new FileReader(file));
+        String st;
+        String[] parts;
+        while ((st = br.readLine()) != null){
+            parts = st.trim().split("\\s+");
+            int highBeliefNode = Integer.parseInt(parts[0]);
+            highBeliefNodes.add(highBeliefNode);
+        }
+        assert(highBeliefNodes.size() == 100);
+    }
+
+    //This method reads the activated nodes from the input file
+    private void readingAllActNodesFromFile(HashSet<Integer> allActivatedNodes) throws Exception{
+
+        System.out.println("Reading All Activated Nodes From File");
+        File file = new File(pathToAllActNodesFile);
+        BufferedReader br = new BufferedReader(new FileReader(file));
+        String st;
+        String[] parts;
+        while ((st = br.readLine()) != null){
+            parts = st.trim().split("\\s+");
+            int activatedNode = Integer.parseInt(parts[0]);
+            allActivatedNodes.add(activatedNode);
+        }
+        assert (allActivatedNodes.size() > 0);
+    }
+
+    private void calculateDistanceFromSource(int sourceNode, ArrayList<ArrayList<Integer>> srcNodeClosestToThisNode, ArrayList<ArrayList<Integer>> srcNodesThatRchdThisNode) throws Exception {
 
         //Initializations
         System.out.println("Calculating Distances From:" + sourceNode);
@@ -148,8 +243,11 @@ public class FindDistance {
                     int currNode = bfsList.get(i).get(j);
                     srcNodesThatRchdThisNode.get(currNode).add(sourceNode);//Because the srcNode could reach the currNode, we add the srcNode to the List[currNode]
                     if(prevDistFromSource > i || prevDistFromSource == -1){
-                        srcNodeClosestToThisNode.set(currNode, sourceNode);//Because the currNode was closer to this srcNode compared to the prev srcNode, we update the srcNodeClosestToThisNode DS
+                        srcNodeClosestToThisNode.get(currNode).clear();//Because the currNode was closer to this srcNode compared to the prev srcNode, we first clear the previously saved closest nodes to this node
+                        srcNodeClosestToThisNode.get(currNode).add(sourceNode);//Because the currNode was closer to this srcNode compared to the prev srcNode, we update the srcNodeClosestToThisNode DS
                         distances.set(currNode, i);
+                    } else if (prevDistFromSource == i ){
+                        srcNodeClosestToThisNode.get(currNode).add(sourceNode);//Because the currNode is at the same dist from this srcNode compared to the prev srcNode, we add sourceNode to the list of nodes in srcNodeClosestToThisNode[currNode]
                     }
                 }
             }else break;
@@ -224,19 +322,43 @@ public class FindDistance {
      * 3: 0  //means that vertex 3 was the source
      * 4: -1 //means that vertex 4 was not reachable from the source
      * */
-    private void printResultsToFile(ArrayList<Integer> sourceNodeList, ArrayList<Integer> shortestDistFromNode, ArrayList<ArrayList<Integer>> srcNodesWithPath) throws Exception{
+    private void printResultsToFile(ArrayList<Integer> sourceNodeList,
+                                    ArrayList<ArrayList<Integer>> shortestDistFromNode,
+                                    ArrayList<ArrayList<Integer>> srcNodesWithPath,
+                                    ArrayList<Integer> incomingHighBeliefNodes,
+                                    ArrayList<Integer> outgoingHighBeliefNodes,
+                                    ArrayList<Integer> incomingAllActNodes,
+                                    ArrayList<Integer> outgoingAllActNodes) throws Exception {
+
         System.out.println("Printing values to File");
-        String[] completePath = pathToFile.trim().split("\\\\");
+        String[] completePath = pathToGraphFile.trim().split("\\\\");
         String fileName = completePath[completePath.length - 1];
         fileName = "distanceFromSource_" +  fileName;
 
         try (Writer writer = new BufferedWriter(new OutputStreamWriter(new FileOutputStream(fileName), "utf-8"))) {
             writer.write("Distance of nodes from the sourceList: " + sourceNodeList + "\n");
-            writer.write("Node\tdistFromSrc\tclosestSrcNode\tsrcNodesRchd" + "\n");
+            writer.write("Node\tdistFromSrc\tclosestSrcNode\tsrcNodesThatRchdThisNode\tOutDegree\tnumOfOutgoingActNodes\tnumOfOutgoingHBN" +
+                    "\tInDegree\tnumOfIncomingActNodes\tnumOfIncomingHBN" + "\n");
             for(int i = 0; i < distances.size(); i++){
-                writer.write(i + "\t" + distances.get(i) + "\t" + shortestDistFromNode.get(i) + "\t" + srcNodesWithPath.get(i) + "\n");
+                writer.write(i +"\t"+ distances.get(i) +"\t"+ shortestDistFromNode.get(i) +"\t"+ srcNodesWithPath.get(i) +
+                        "\t"+ myGraph.get(i).size() +"\t"+ outgoingAllActNodes.get(i) +"\t"+ outgoingHighBeliefNodes.get(i) +
+                        "\t"+ myTransposedGraph.get(i).size() +"\t"+ incomingAllActNodes.get(i) +"\t"+ incomingHighBeliefNodes.get(i) +
+                        "\n");
             }
         }
         System.out.println("Task Completed Successfully!");
+    }
+
+    private void assertTransposeIsCorrect(){
+        assert (n == myTransposedGraph.size());
+        int numOfEdgesInTranspose = 0;
+        for(int fromVertex = 0; fromVertex < myTransposedGraph.size(); fromVertex++){
+            for(int j = 0; j < myTransposedGraph.get(fromVertex).size(); j++){
+                int toVertex = myTransposedGraph.get(fromVertex).get(j);
+                assert (myGraph.get(toVertex).contains(fromVertex));
+                numOfEdgesInTranspose++;
+            }
+        }
+        assert (numOfEdgesInTranspose == m);
     }
 }

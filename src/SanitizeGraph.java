@@ -24,7 +24,7 @@ public class SanitizeGraph {
         BufferedReader br = new BufferedReader(new FileReader(file));
         String st;
         st = br.readLine();
-        String[] parts = st.trim().split("\\s+");                   //requires the nodes to be separated by space and not tab
+        String[] parts = st.trim().split("\\s+");
         n = Integer.parseInt(parts[0]);
         m = Integer.parseInt(parts[1]);
 
