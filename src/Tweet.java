@@ -8,6 +8,7 @@ public class Tweet {
     public String in_reply_to_user_id_str;//If the represented Tweet is a reply, this field will contain the string representation of the original Tweet’s author ID.
     public String in_reply_to_screen_name;//If the represented Tweet is a reply, this field will contain the screen name of the original Tweet’s author.
     public User user;
+    public Coordinates coordinates;//Represents the geographic location of this Tweet as reported by the user or client application.
     public String quoted_status_id_str;//This field only surfaces when the Tweet is a quote Tweet.
     public boolean is_quote_status;//Indicates whether this is a Quoted Tweet.
     public Tweet quoted_status;//This field only surfaces when the Tweet is a quote Tweet. This attribute contains the Tweet object of the original Tweet that was quoted.
@@ -18,9 +19,5 @@ public class Tweet {
     public int favorite_count;//Indicates approximately how many times this Tweet has been liked by Twitter users.
     public Entities entities;//Entities which have been parsed out of the text of the Tweet.
     public ExtendedTweet extendedTweet;
-
-
-
-
 
 }
