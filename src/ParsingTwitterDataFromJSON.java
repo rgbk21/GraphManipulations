@@ -2,13 +2,15 @@ import com.google.gson.Gson;
 import net.lingala.zip4j.ZipFile;
 
 import java.io.*;
-import java.util.HashSet;
-import java.util.Hashtable;
+import java.util.*;
 
 public class ParsingTwitterDataFromJSON {
 
-    private Hashtable<String, String> userIdToScreenName = new Hashtable<>();
+    private Hashtable<String, Integer> userIdToIndex = new Hashtable<>();//Maps the user.id_str to an integer between 0..n-1
     private HashSet<String> vertices = new HashSet<>();
+    private Hashtable<String, ArrayList<String>> screenNames = new Hashtable<>();//Stores the screen_name associated with each user.id_str
+    private int numOfVertices = 0;
+    private int numOfEdges = 0;
 
     public ParsingTwitterDataFromJSON(String pathToTweets, String pathToSeedSet) throws Exception{
 
@@ -37,7 +39,9 @@ public class ParsingTwitterDataFromJSON {
         Then we are deleting the unzippped text file
          */
         String outputFileName = "C:\\Users\\rajga\\PycharmProjects\\Twitter\\twitterGraph.txt";
+        String outputFileName_withScreenNames = "C:\\Users\\rajga\\PycharmProjects\\Twitter\\twitterGraph_with_screen_names.txt";
         BufferedWriter twitterGraph = new BufferedWriter(new FileWriter(outputFileName));
+        BufferedWriter twitterGraph_with_screen_names = new BufferedWriter(new FileWriter(outputFileName_withScreenNames));
 
 //        twitterGraph.write("user_screen_name" + "\t" +
 //                        "in_reply_to_user_id_str" + "\t" +
@@ -49,7 +53,7 @@ public class ParsingTwitterDataFromJSON {
             String zipFilePath = pathToTweets + "tweets_HK_" + i + ".zip";
             new ZipFile(zipFilePath).extractAll("C:\\Users\\rajga\\PycharmProjects\\Twitter\\");
             String unzippedFilePath = pathToTweets + "tweets_HK_" + i + ".txt";
-            readJSONFile(unzippedFilePath, twitterGraph, i);
+            readJSONFile(unzippedFilePath, twitterGraph, twitterGraph_with_screen_names, i);
             try {
                 File f = new File(unzippedFilePath);
                 if (f.delete()) System.out.println("File deleted");
@@ -60,15 +64,31 @@ public class ParsingTwitterDataFromJSON {
             }
         }
         twitterGraph.close();
-        //Printing out the nodes in the final formed graph
-        /*
-        for (String s : vertices){
-            System.out.println(s);
+
+        //Stats
+        outputFileName = "C:\\Users\\rajga\\PycharmProjects\\Twitter\\twitterGraphStats.txt";
+        BufferedWriter twitterGraphStats = new BufferedWriter(new FileWriter(outputFileName));
+
+        twitterGraphStats.write("Total number of vertices in twitterGraph: " + numOfVertices + "\n");
+        twitterGraphStats.write("Total number of edges in twitterGraph: " + numOfEdges + "\n");
+        twitterGraphStats.write("Printing userIdToIndex Datastructure: " + "\n");
+        twitterGraphStats.write("This maps user.id_str to integers " + "\n");
+        for (Map.Entry<String, Integer> entry : userIdToIndex.entrySet()) {
+            String key = entry.getKey();
+            Integer value = entry.getValue();
+            twitterGraphStats.write( key + ": " + value + "\n");
         }
-        */
+        twitterGraphStats.write("****************************************************************" + "\n");
+        twitterGraphStats.write("Printing screenNames: " + "\n");
+        for (Map.Entry<String, ArrayList<String>> entry : screenNames.entrySet()) {
+            String key = entry.getKey();
+            ArrayList<String> value = entry.getValue();
+            twitterGraphStats.write( key + ": " + value + "\n");
+        }
+        twitterGraphStats.close();
     }
 
-    private void readJSONFile (String unzippedFilePath, BufferedWriter twitterGraph, int fileNum) throws Exception{
+    private void readJSONFile (String unzippedFilePath, BufferedWriter twitterGraph, BufferedWriter twitterGraph_with_screen_names, int fileNum) throws Exception{
 
         File file = new File(unzippedFilePath);
         BufferedReader br = new BufferedReader(new FileReader(file));
@@ -79,7 +99,7 @@ public class ParsingTwitterDataFromJSON {
             jsonString = jsonString.trim();
             if (!jsonString.isEmpty()){
                 Tweet nextTweet = g.fromJson(jsonString, Tweet.class);
-                writeTwitterGraph(nextTweet, twitterGraph, fileNum);
+                writeTwitterGraph(nextTweet, twitterGraph, twitterGraph_with_screen_names, fileNum);
             }
         }
         br.close();
@@ -89,111 +109,225 @@ public class ParsingTwitterDataFromJSON {
     //We checked. THey are not. There are about 286 duplicate screen_names.
     //So we are going to change the implementation so that now the vertices are not screen_name's but user.id_str, in another branch.
 
-    private void writeTwitterGraph(Tweet nextTweet, BufferedWriter twitterGraph, int fileNum) throws Exception{
+    private void writeTwitterGraph(Tweet nextTweet, BufferedWriter twitterGraph, BufferedWriter twitterGraph_with_screen_names, int fileNum) throws Exception{
 
         if(nextTweet.retweeted_status != null){
-
-            String fromVertex = "";
-            String toVertex = "";
-            //Get the screen_name of the user retweeting the tweet
-            if(!userIdToScreenName.containsKey(nextTweet.user.id_str)){
-                userIdToScreenName.put(nextTweet.user.id_str, nextTweet.user.screen_name);
-                toVertex = nextTweet.user.screen_name;
-            }else{
-                toVertex = userIdToScreenName.get(nextTweet.user.id_str);
-                if(!toVertex.equals(nextTweet.user.screen_name)){
-                    System.out.println("Duplicate user.id_str: " + nextTweet.user.id_str);
-                    System.out.println("nextTweet.user.screen_name: " + nextTweet.user.screen_name);
-                    System.out.println("screen_name in datastructure: " + toVertex);
+            //if this tweet is a retweet
+            addEdgeForRetweet(nextTweet, twitterGraph, twitterGraph_with_screen_names);
+            if (nextTweet.retweeted_status.quoted_status != null){
+                System.out.println("Retweet of a quote");
+                addEdgeForQuote(nextTweet.retweeted_status, twitterGraph, twitterGraph_with_screen_names);
+                if(nextTweet.retweeted_status.quoted_status.in_reply_to_user_id_str != null){
+                    System.out.println("Retweet of a quote where the tweet being quoted was a reply");
+                    addEdgeForReply(nextTweet.retweeted_status.quoted_status, twitterGraph, twitterGraph_with_screen_names);
+                }
+                if(nextTweet.retweeted_status.quoted_status.quoted_status != null){
+                    System.out.println("Retweet of a quote where the tweet being quoted was a also a quote?");
+                    addEdgeForQuote(nextTweet.retweeted_status.quoted_status, twitterGraph, twitterGraph_with_screen_names);
                 }
             }
-            //Get the screen_name of the user whose tweet was retweeted
-            if(!userIdToScreenName.containsKey(nextTweet.retweeted_status.user.id_str)){
-                userIdToScreenName.put(nextTweet.retweeted_status.user.id_str, nextTweet.retweeted_status.user.screen_name);
-                fromVertex = nextTweet.retweeted_status.user.screen_name;
-            }else{
-                fromVertex = userIdToScreenName.get(nextTweet.retweeted_status.user.id_str);
-                if(!fromVertex.equals(nextTweet.retweeted_status.user.screen_name)){
-                    System.out.println("Duplicate user.id_str: " + nextTweet.retweeted_status.user.id_str);
-                    System.out.println("nextTweet.retweeted_status.user.screen_name: " + nextTweet.retweeted_status.user.screen_name);
-                    System.out.println("screen_name in datastructure: " + fromVertex);
-                }
+            if (nextTweet.retweeted_status.retweeted_status != null){
+                System.out.println("Retweet of a retweet");
+                addEdgeForQuote(nextTweet.retweeted_status, twitterGraph, twitterGraph_with_screen_names);
             }
-            twitterGraph.write(fromVertex + "\t" + toVertex + "\n");
 
         }else if(nextTweet.quoted_status != null){
-
-            String fromVertex = "";
-            String toVertex = "";
-            //Get the screen_name of the user quoting the tweet
-            if(!userIdToScreenName.containsKey(nextTweet.user.id_str)){
-                userIdToScreenName.put(nextTweet.user.id_str, nextTweet.user.screen_name);
-                toVertex = nextTweet.user.screen_name;
-            }else{
-                toVertex = userIdToScreenName.get(nextTweet.user.id_str);
-                if(!toVertex.equals(nextTweet.user.screen_name)){
-                    System.out.println("Duplicate user.id_str: " + nextTweet.user.id_str);
-                    System.out.println("nextTweet.user.screen_name: " + nextTweet.user.screen_name);
-                    System.out.println("screen_name in datastructure: " + toVertex);
-                }
+            //if this tweet is a retweet with a comment / quoted tweet
+            addEdgeForQuote(nextTweet, twitterGraph, twitterGraph_with_screen_names);
+            if (nextTweet.quoted_status.quoted_status != null){
+                System.out.println("Quote of a quote");
+                addEdgeForQuote(nextTweet.quoted_status, twitterGraph, twitterGraph_with_screen_names);
             }
-            //Get the screen_name of the user whose tweet was quoted
-            if(!userIdToScreenName.containsKey(nextTweet.quoted_status.user.id_str)){
-                userIdToScreenName.put(nextTweet.quoted_status.user.id_str, nextTweet.quoted_status.user.screen_name);
-                fromVertex = nextTweet.quoted_status.user.screen_name;
-            }else{
-                fromVertex = userIdToScreenName.get(nextTweet.quoted_status.user.id_str);
-                if(!fromVertex.equals(nextTweet.quoted_status.user.screen_name)){
-                    System.out.println("Duplicate user.id_str: " + nextTweet.quoted_status.user.id_str);
-                    System.out.println("nextTweet.quoted_status.user.screen_name: " + nextTweet.quoted_status.user.screen_name);
-                    System.out.println("screen_name in datastructure: " + fromVertex);
-                }
+            if (nextTweet.quoted_status.retweeted_status != null){
+                System.out.println("Quote of a retweet");
+                addEdgeForRetweet(nextTweet.quoted_status, twitterGraph, twitterGraph_with_screen_names);
             }
-            twitterGraph.write(fromVertex + "\t" + toVertex + "\n");
+            if (nextTweet.quoted_status.in_reply_to_user_id_str != null){
+                System.out.println("Quote of a reply: " + nextTweet.quoted_status.id_str);
+                addEdgeForReply(nextTweet.quoted_status, twitterGraph, twitterGraph_with_screen_names);
+            }
 
         }else if(nextTweet.in_reply_to_user_id_str != null){
-
-            String fromVertex = "";
-            String toVertex = "";
-            //Get the screen_name of the user replying to the tweet
-            if(!userIdToScreenName.containsKey(nextTweet.user.id_str)){
-                userIdToScreenName.put(nextTweet.user.id_str, nextTweet.user.screen_name);
-                toVertex = nextTweet.user.screen_name;
-            }else{
-                toVertex = userIdToScreenName.get(nextTweet.user.id_str);
-                if(!toVertex.equals(nextTweet.user.screen_name)){
-                    System.out.println("Duplicate user.id_str: " + nextTweet.user.id_str);
-                    System.out.println("nextTweet.user.screen_name: " + nextTweet.user.screen_name);
-                    System.out.println("screen_name in datastructure: " + toVertex);
-                }
+            //if this tweet is a reply to another tweet
+            addEdgeForReply(nextTweet, twitterGraph, twitterGraph_with_screen_names);
+            if (nextTweet.quoted_status != null || nextTweet.retweeted_status != null){
+                System.out.println("SOMETHING WEIRD JUST HAPPENED IN TWEET: " + nextTweet.id_str);
             }
-            //Get the screen_name of the user whose tweet was replied to
-            if(!userIdToScreenName.containsKey(nextTweet.in_reply_to_user_id_str)){
-                userIdToScreenName.put(nextTweet.in_reply_to_user_id_str, nextTweet.in_reply_to_screen_name);
-                fromVertex = nextTweet.in_reply_to_screen_name;
-            }else{
-                fromVertex = userIdToScreenName.get(nextTweet.in_reply_to_user_id_str);
-                if(!fromVertex.equals(nextTweet.in_reply_to_screen_name)){
-                    System.out.println("Duplicate user.id_str: " + nextTweet.in_reply_to_user_id_str);
-                    System.out.println("nextTweet.in_reply_to_screen_name: " + nextTweet.in_reply_to_screen_name);
-                    System.out.println("screen_name in datastructure: " + fromVertex);
-                }
-            }
-            twitterGraph.write(fromVertex + "\t" + toVertex + "\n");
 
         }else{
-
-            String toVertex = "";
+            //this tweet is an original tweet
+            int toVertex;
             //Get the screen_name of the user tweeting
-            if(!userIdToScreenName.containsKey(nextTweet.user.id_str)){
-                userIdToScreenName.put(nextTweet.user.id_str, nextTweet.user.screen_name);
-                toVertex = nextTweet.user.screen_name;
+            if(!userIdToIndex.containsKey(nextTweet.user.id_str)){
+                userIdToIndex.put(nextTweet.user.id_str, numOfVertices);
+                toVertex = numOfVertices;
+                numOfVertices++;
+                //Since this is the first time we are seeing this user.id_str, we create a new ArrayList
+                //Adding the screen_name to the DS
+                ArrayList<String> temp = new ArrayList<>();
+                temp.add(nextTweet.user.screen_name);
+                screenNames.put(nextTweet.user.id_str, temp);
             }else{
-               //Don't do anything
+                //If the arrayList associated with this user.id_str already contains this screen_name then we do nothing
+                //else we add this screen_name to the list
+                ArrayList<String> temp = screenNames.get(nextTweet.user.id_str);
+                if(!temp.contains(nextTweet.user.screen_name)){
+                    temp.add(nextTweet.user.screen_name);
+                    screenNames.put(nextTweet.user.id_str, temp);
+                }
             }
         }
 //        twitterGraph.write(fileNum + "\n");
+    }
 
+    private void addEdgeForRetweet(Tweet nextTweet, BufferedWriter twitterGraph, BufferedWriter twitterGraph_with_screen_names) throws Exception{
+
+        int fromVertex;
+        int toVertex;
+        //Get the toVertex - index of the user retweeting the tweet
+        if(!userIdToIndex.containsKey(nextTweet.user.id_str)){
+            userIdToIndex.put(nextTweet.user.id_str, numOfVertices);
+            toVertex = numOfVertices;
+            numOfVertices++;
+            //Since this is the first time we are seeing this user.id_str, we create a new ArrayList
+            //Adding the screen_name to the DS
+            ArrayList<String> temp = new ArrayList<>();
+            temp.add(nextTweet.user.screen_name);
+            screenNames.put(nextTweet.user.id_str, temp);
+        }else{
+            toVertex = userIdToIndex.get(nextTweet.user.id_str);
+            //If the arrayList associated with this user.id_str already contains this screen_name then we do nothing
+            //else we add this screen_name to the list
+            ArrayList<String> temp = screenNames.get(nextTweet.user.id_str);
+            if(!temp.contains(nextTweet.user.screen_name)){
+                temp.add(nextTweet.user.screen_name);
+                screenNames.put(nextTweet.user.id_str, temp);
+            }
+        }
+        //Get the fromVertex - index of the user whose tweet was retweeted
+        if(!userIdToIndex.containsKey(nextTweet.retweeted_status.user.id_str)){
+            userIdToIndex.put(nextTweet.retweeted_status.user.id_str, numOfVertices);
+            fromVertex = numOfVertices;
+            numOfVertices++;
+            //Since this is the first time we are seeing this user.id_str, we create a new ArrayList
+            //Adding the screen_name to the DS
+            ArrayList<String> temp = new ArrayList<>();
+            temp.add(nextTweet.retweeted_status.user.screen_name);
+            screenNames.put(nextTweet.retweeted_status.user.id_str, temp);
+        }else{
+            fromVertex = userIdToIndex.get(nextTweet.retweeted_status.user.id_str);
+            //If the arrayList associated with this user.id_str already contains this screen_name then we do nothing
+            //else we add this screen_name to the list
+            ArrayList<String> temp = screenNames.get(nextTweet.retweeted_status.user.id_str);
+            if(!temp.contains(nextTweet.retweeted_status.user.screen_name)){
+                temp.add(nextTweet.retweeted_status.user.screen_name);
+                screenNames.put(nextTweet.retweeted_status.user.id_str, temp);
+            }
+        }
+        //Add the edge to the graph
+        twitterGraph.write(fromVertex + "\t" + toVertex + "\n");
+        twitterGraph_with_screen_names.write( nextTweet.retweeted_status.user.screen_name + "\t" + nextTweet.user.screen_name + "\n");
+        numOfEdges++;
+    }
+
+    private void addEdgeForQuote(Tweet nextTweet, BufferedWriter twitterGraph, BufferedWriter twitterGraph_with_screen_names) throws Exception{
+
+        int fromVertex;
+        int toVertex;
+        //Get the toVertex - index of the user quoting the tweet
+        if(!userIdToIndex.containsKey(nextTweet.user.id_str)){
+            userIdToIndex.put(nextTweet.user.id_str, numOfVertices);
+            toVertex = numOfVertices;
+            numOfVertices++;
+            //Since this is the first time we are seeing this user.id_str, we create a new ArrayList
+            //Adding the screen_name to the DS
+            ArrayList<String> temp = new ArrayList<>();
+            temp.add(nextTweet.user.screen_name);
+            screenNames.put(nextTweet.user.id_str, temp);
+        }else{
+            toVertex = userIdToIndex.get(nextTweet.user.id_str);
+            //If the arrayList associated with this user.id_str already contains this screen_name then we do nothing
+            //else we add this screen_name to the list
+            ArrayList<String> temp = screenNames.get(nextTweet.user.id_str);
+            if(!temp.contains(nextTweet.user.screen_name)){
+                temp.add(nextTweet.user.screen_name);
+                screenNames.put(nextTweet.user.id_str, temp);
+            }
+        }
+        //Get the fromVertex - index of the user whose tweet was quoted
+        if(!userIdToIndex.containsKey(nextTweet.quoted_status.user.id_str)){
+            userIdToIndex.put(nextTweet.quoted_status.user.id_str, numOfVertices);
+            fromVertex = numOfVertices;
+            numOfVertices++;
+            //Since this is the first time we are seeing this user.id_str, we create a new ArrayList
+            //Adding the screen_name to the DS
+            ArrayList<String> temp = new ArrayList<>();
+            temp.add(nextTweet.quoted_status.user.screen_name);
+            screenNames.put(nextTweet.quoted_status.user.id_str, temp);
+        }else{
+            fromVertex = userIdToIndex.get(nextTweet.quoted_status.user.id_str);
+            //If the arrayList associated with this user.id_str already contains this screen_name then we do nothing
+            //else we add this screen_name to the list
+            ArrayList<String> temp = screenNames.get(nextTweet.quoted_status.user.id_str);
+            if(!temp.contains(nextTweet.quoted_status.user.screen_name)){
+                temp.add(nextTweet.quoted_status.user.screen_name);
+                screenNames.put(nextTweet.quoted_status.user.id_str, temp);
+            }
+        }
+        //Add the edge to the graph
+        twitterGraph.write(fromVertex + "\t" + toVertex + "\n");
+        twitterGraph_with_screen_names.write(nextTweet.quoted_status.user.screen_name + "\t" + nextTweet.user.screen_name + "\n");
+        numOfEdges++;
+    }
+
+    private void addEdgeForReply(Tweet nextTweet, BufferedWriter twitterGraph, BufferedWriter twitterGraph_with_screen_names) throws Exception{
+
+        int fromVertex;
+        int toVertex;
+        //Get the toVertex - index of the user replying to the tweet
+        if(!userIdToIndex.containsKey(nextTweet.user.id_str)){
+            userIdToIndex.put(nextTweet.user.id_str, numOfVertices);
+            toVertex = numOfVertices;
+            numOfVertices++;
+            //Since this is the first time we are seeing this user.id_str, we create a new ArrayList
+            //Adding the screen_name to the DS
+            ArrayList<String> temp = new ArrayList<>();
+            temp.add(nextTweet.user.screen_name);
+            screenNames.put(nextTweet.user.id_str, temp);
+        }else{
+            toVertex = userIdToIndex.get(nextTweet.user.id_str);
+            //If the arrayList associated with this user.id_str already contains this screen_name then we do nothing
+            //else we add this screen_name to the list
+            ArrayList<String> temp = screenNames.get(nextTweet.user.id_str);
+            if(!temp.contains(nextTweet.user.screen_name)){
+                temp.add(nextTweet.user.screen_name);
+                screenNames.put(nextTweet.user.id_str, temp);
+            }
+        }
+        //Get the fromVertex - index of the user whose tweet was replied to
+        if(!userIdToIndex.containsKey(nextTweet.in_reply_to_user_id_str)){
+            userIdToIndex.put(nextTweet.in_reply_to_user_id_str, numOfVertices);
+            fromVertex = numOfVertices;
+            numOfVertices++;
+            //Since this is the first time we are seeing this user.id_str, we create a new ArrayList
+            //Adding the screen_name to the DS
+            ArrayList<String> temp = new ArrayList<>();
+            temp.add(nextTweet.in_reply_to_screen_name);
+            screenNames.put(nextTweet.in_reply_to_user_id_str, temp);
+        }else{
+            fromVertex = userIdToIndex.get(nextTweet.in_reply_to_user_id_str);
+            //If the arrayList associated with this user.id_str already contains this screen_name then we do nothing
+            //else we add this screen_name to the list
+            ArrayList<String> temp = screenNames.get(nextTweet.in_reply_to_user_id_str);
+            if(!temp.contains(nextTweet.in_reply_to_screen_name)){
+                temp.add(nextTweet.in_reply_to_screen_name);
+                screenNames.put(nextTweet.in_reply_to_user_id_str, temp);
+            }
+        }
+        //Add the edge to the graph
+        twitterGraph.write(fromVertex + "\t" + toVertex + "\n");
+        twitterGraph_with_screen_names.write(nextTweet.in_reply_to_screen_name+ "\t" + nextTweet.user.screen_name  + "\n");
+        numOfEdges++;
     }
 
     private void printStuff(Tweet nextTweet){
